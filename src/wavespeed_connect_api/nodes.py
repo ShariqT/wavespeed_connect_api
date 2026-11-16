@@ -1,12 +1,14 @@
 from inspect import cleandoc
 import requests
 import json
+import time
 
 
 class WaveSpeedReferenceToVideo:
     """
     A ComfyUI node that connects to the WaveSpeed AI API for reference-to-video generation.
     Uses the Seedance 2.5 Flash model to generate videos from reference images and videos.
+    Polls for the result after submitting the task.
     """
 
     def __init__(self):
@@ -60,12 +62,104 @@ class WaveSpeedReferenceToVideo:
             },
         }
 
-    RETURN_TYPES = ("STRING", "STRING")
-    RETURN_NAMES = ("video_url", "status")
+    RETURN_TYPES = ()
+    RETURN_NAMES = ()
+    OUTPUT_NODE = True
     DESCRIPTION = cleandoc(__doc__)
     FUNCTION = "generate_video"
-    OUTPUT_NODE = True
     CATEGORY = "WaveSpeed"
+
+    def poll_for_result(self, task_id, api_key, max_attempts=60, poll_interval=5):
+        """
+        Poll the WaveSpeed API for the result of a video generation task.
+
+        Args:
+            task_id: The task ID returned from the initial request
+            api_key: The API key for authentication
+            max_attempts: Maximum number of polling attempts (default: 60)
+            poll_interval: Seconds between polling attempts (default: 5)
+
+        Returns:
+            Tuple of (video_url, status_message, ui_updates)
+        """
+        result_url = f"https://api.wavespeed.ai/api/v3/predictions/{task_id}/result"
+        headers = {
+            "Authorization": f"Bearer {api_key}"
+        }
+
+        ui_updates = []
+
+        for attempt in range(max_attempts):
+            try:
+                response = requests.get(
+                    result_url,
+                    headers=headers,
+                    timeout=30
+                )
+                response.raise_for_status()
+                result = response.json()
+
+                # Check the status field in the response
+                status = result.get("status", "unknown")
+                status_msg = f"Attempt {attempt + 1}/{max_attempts}: Status = {status}"
+                ui_updates.append(status_msg)
+
+                if status == "completed":
+                    # Video generation is complete, extract the video URL
+                    video_url = result.get("output", {}).get("video_url", "")
+                    if not video_url:
+                        video_url = result.get("video_url", "")
+                    final_status = f"Completed after {attempt + 1} polling attempts"
+                    ui_updates.append(final_status)
+                    return (video_url, final_status, ui_updates)
+
+                elif status == "failed":
+                    # Video generation failed
+                    error_message = result.get("error", "Unknown error")
+                    final_status = f"Task failed: {error_message}"
+                    ui_updates.append(final_status)
+                    return ("", final_status, ui_updates)
+
+                elif status in ("processing", "queued", "pending"):
+                    # Task is still in progress, continue polling
+                    time.sleep(poll_interval)
+                    continue
+
+                else:
+                    # Unknown status, continue polling
+                    time.sleep(poll_interval)
+                    continue
+
+            except requests.exceptions.HTTPError as e:
+                if e.response.status_code == 404:
+                    # Task not found or not ready yet, continue polling
+                    status_msg = f"Attempt {attempt + 1}/{max_attempts}: Task not ready yet (404)"
+                    ui_updates.append(status_msg)
+                    time.sleep(poll_interval)
+                    continue
+                error_msg = f"HTTP Error during polling: {e.response.status_code}"
+                try:
+                    error_detail = e.response.json()
+                    error_msg += f" - {json.dumps(error_detail)}"
+                except:
+                    error_msg += f" - {e.response.text}"
+                ui_updates.append(error_msg)
+                return ("", error_msg, ui_updates)
+
+            except requests.exceptions.RequestException as e:
+                error_msg = f"Request Error during polling: {str(e)}"
+                ui_updates.append(error_msg)
+                return ("", error_msg, ui_updates)
+
+            except Exception as e:
+                error_msg = f"Unexpected Error during polling: {str(e)}"
+                ui_updates.append(error_msg)
+                return ("", error_msg, ui_updates)
+
+        # Max attempts reached
+        timeout_msg = f"Timeout: Task did not complete after {max_attempts} polling attempts"
+        ui_updates.append(timeout_msg)
+        return ("", timeout_msg, ui_updates)
 
     def generate_video(self, wavespeed_api_key, prompt, resolution, aspect_ratio, duration,
                        reference_images="", reference_videos=""):
@@ -82,7 +176,7 @@ class WaveSpeedReferenceToVideo:
             reference_videos: Newline-separated list of reference video URLs/paths
 
         Returns:
-            Tuple of (video_url, status_message)
+            UI output for display on the canvas
         """
         base_url = "https://api.wavespeed.ai/api/v3/bytedance/seedance-2.5-flash/reference-to-video"
 
@@ -118,7 +212,7 @@ class WaveSpeedReferenceToVideo:
                 base_url,
                 headers=headers,
                 json=payload,
-                timeout=300  # 5 minute timeout for video generation
+                timeout=60
             )
 
             # Check if the request was successful
@@ -127,11 +221,33 @@ class WaveSpeedReferenceToVideo:
             # Parse the response
             result = response.json()
 
-            # Extract video URL from response (adjust based on actual API response structure)
-            video_url = result.get("video_url", "")
-            status = f"Success: Video generated successfully"
+            # Extract task_id from response
+            task_id = result.get("task_id", "")
 
-            return (video_url, status)
+            if not task_id:
+                return {
+                    "ui": {
+                        "text": [f"Error: No task_id returned from API. Response: {json.dumps(result)}"]
+                    },
+                    "result": ("", "", "Error: No task_id returned")
+                }
+
+            # Poll for the result
+            video_url, poll_status, ui_updates = self.poll_for_result(task_id, wavespeed_api_key)
+
+            status_message = f"Task ID: {task_id} | {poll_status}"
+
+            # Prepare UI output to display on canvas with polling progress
+            ui_output = {
+                "ui": {
+                    "text": ui_updates + [status_message],
+                    "video_url": [video_url] if video_url else [],
+                    "task_id": [task_id]
+                },
+                "result": (video_url, task_id, status_message)
+            }
+
+            return ui_output
 
         except requests.exceptions.HTTPError as e:
             error_msg = f"HTTP Error: {e.response.status_code}"
@@ -140,16 +256,33 @@ class WaveSpeedReferenceToVideo:
                 error_msg += f" - {json.dumps(error_detail)}"
             except:
                 error_msg += f" - {e.response.text}"
-            return ("", error_msg)
+            return {
+                "ui": {
+                    "text": [error_msg]
+                },
+                "result": ("", "", error_msg)
+            }
 
         except requests.exceptions.RequestException as e:
-            return ("", f"Request Error: {str(e)}")
+            error_msg = f"Request Error: {str(e)}"
+            return {
+                "ui": {
+                    "text": [error_msg]
+                },
+                "result": ("", "", error_msg)
+            }
 
         except Exception as e:
-            return ("", f"Unexpected Error: {str(e)}")
+            error_msg = f"Unexpected Error: {str(e)}"
+            return {
+                "ui": {
+                    "text": [error_msg]
+                },
+                "result": ("", "", error_msg)
+            }
 
 
-# A dictionary that contains all nodes you want to export with their names
+# A dictionary that contains all all nodes you want to export with their names
 # NOTE: names should be globally unique
 NODE_CLASS_MAPPINGS = {
     "WaveSpeedReferenceToVideo": WaveSpeedReferenceToVideo
