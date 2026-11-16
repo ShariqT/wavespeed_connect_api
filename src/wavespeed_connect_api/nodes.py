@@ -225,24 +225,28 @@ class WaveSpeedReferenceToVideo:
             task_id = result.get("task_id", "")
 
             if not task_id:
+                error_text = f"Error: No task_id returned from API. Response: {json.dumps(result)}"
                 return {
                     "ui": {
-                        "text": [f"Error: No task_id returned from API. Response: {json.dumps(result)}"]
+                        "text": [error_text],
                     },
-                    "result": ("", "", "Error: No task_id returned")
+                    "result": ("", "", error_text)
                 }
 
             # Poll for the result
             video_url, poll_status, ui_updates = self.poll_for_result(task_id, wavespeed_api_key)
 
             status_message = f"Task ID: {task_id} | {poll_status}"
+            
+            # Combine all UI messages
+            all_messages = ui_updates + [status_message]
+            if video_url:
+                all_messages.append(f"Video URL: {video_url}")
 
             # Prepare UI output to display on canvas with polling progress
             ui_output = {
                 "ui": {
-                    "text": ui_updates + [status_message],
-                    "video_url": [video_url] if video_url else [],
-                    "task_id": [task_id]
+                    "text": all_messages,
                 },
                 "result": (video_url, task_id, status_message)
             }
@@ -258,7 +262,7 @@ class WaveSpeedReferenceToVideo:
                 error_msg += f" - {e.response.text}"
             return {
                 "ui": {
-                    "text": [error_msg]
+                    "text": [error_msg],
                 },
                 "result": ("", "", error_msg)
             }
@@ -267,7 +271,7 @@ class WaveSpeedReferenceToVideo:
             error_msg = f"Request Error: {str(e)}"
             return {
                 "ui": {
-                    "text": [error_msg]
+                    "text": [error_msg],
                 },
                 "result": ("", "", error_msg)
             }
@@ -276,7 +280,7 @@ class WaveSpeedReferenceToVideo:
             error_msg = f"Unexpected Error: {str(e)}"
             return {
                 "ui": {
-                    "text": [error_msg]
+                    "text": [error_msg],
                 },
                 "result": ("", "", error_msg)
             }
