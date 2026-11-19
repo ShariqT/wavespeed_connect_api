@@ -227,7 +227,7 @@ class WaveSpeedReferenceToVideo:
 
             if not task_id:
                 error_text = f"Error: No task_id returned from API. Response: {json.dumps(result)}"
-                PromptServer.instance.sendsync("wavespeed.wavespeedreftovideo.update_status", {
+                PromptServer.instance.send_sync("wavespeed.wavespeedreftovideo.update_status", {
                     "status": error_text
                 })
                 # return {
@@ -241,14 +241,14 @@ class WaveSpeedReferenceToVideo:
             video_url, poll_status, ui_updates = self.poll_for_result(task_id, wavespeed_api_key)
 
             status_message = f"Task ID: {task_id} | {poll_status}"
-            PromptServer.instance.sendsync("wavespeed.wavespeedreftovideo.update_status", {
+            PromptServer.instance.send_sync("wavespeed.wavespeedreftovideo.update_status", {
                 "status": status_message
             })
             # Combine all UI messages
             all_messages = ui_updates + [status_message]
             if video_url:
                 all_messages.append(f"Video URL: {video_url}")
-                PromptServer.instance.sendsync("wavespeed.wavespeedreftovideo.update_status", {
+                PromptServer.instance.send_sync("wavespeed.wavespeedreftovideo.update_status", {
                     "status": "Video rendered!"
                 })
                 return video_url
@@ -269,7 +269,7 @@ class WaveSpeedReferenceToVideo:
                 error_msg += f" - {json.dumps(error_detail)}"
             except:
                 error_msg += f" - {e.response.text}"
-            PromptServer.instance.sendsync("wavespeed.wavespeedreftovideo.update_status", {
+            PromptServer.instance.send_sync("wavespeed.wavespeedreftovideo.update_status", {
                 "status": error_msg
             })
             # return {
@@ -281,7 +281,7 @@ class WaveSpeedReferenceToVideo:
 
         except requests.exceptions.RequestException as e:
             error_msg = f"Request Error: {str(e)}"
-            PromptServer.instance.sendsync("wavespeed.wavespeedreftovideo.update_status", {
+            PromptServer.instance.send_sync("wavespeed.wavespeedreftovideo.update_status", {
                 "status": error_msg
             })
             # return {
@@ -293,7 +293,7 @@ class WaveSpeedReferenceToVideo:
 
         except Exception as e:
             error_msg = f"Unexpected Error: {str(e)}"
-            PromptServer.instance.sendsync("wavespeed.wavespeedreftovideo.update_status", {
+            PromptServer.instance.send_sync("wavespeed.wavespeedreftovideo.update_status", {
                 "status": error_msg
             })
             # return {
