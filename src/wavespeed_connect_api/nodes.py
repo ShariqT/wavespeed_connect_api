@@ -2,6 +2,7 @@ from inspect import cleandoc
 import requests
 import json
 import time
+from server import PromptServer
 
 
 class WaveSpeedReferenceToVideo:
@@ -62,8 +63,8 @@ class WaveSpeedReferenceToVideo:
             },
         }
 
-    RETURN_TYPES = ()
-    RETURN_NAMES = ()
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("video_url")
     OUTPUT_NODE = True
     DESCRIPTION = cleandoc(__doc__)
     FUNCTION = "generate_video"
@@ -226,23 +227,31 @@ class WaveSpeedReferenceToVideo:
 
             if not task_id:
                 error_text = f"Error: No task_id returned from API. Response: {json.dumps(result)}"
-                return {
-                    "ui": {
-                        "text": [error_text],
-                    },
-                    "result": ("", "", error_text)
-                }
+                PromptServer.instance.sendsync("wavespeed.wavespeedreftovideo.update_status", {
+                    "status": error_text
+                })
+                # return {
+                #     "ui": {
+                #         "text": [error_text],
+                #     },
+                #     "result": ("", "", error_text)
+                # }
 
             # Poll for the result
             video_url, poll_status, ui_updates = self.poll_for_result(task_id, wavespeed_api_key)
 
             status_message = f"Task ID: {task_id} | {poll_status}"
-            
+            PromptServer.instance.sendsync("wavespeed.wavespeedreftovideo.update_status", {
+                "status": status_message
+            })
             # Combine all UI messages
             all_messages = ui_updates + [status_message]
             if video_url:
                 all_messages.append(f"Video URL: {video_url}")
-
+                PromptServer.instance.sendsync("wavespeed.wavespeedreftovideo.update_status", {
+                    "status": "Video rendered!"
+                })
+                return video_url
             # Prepare UI output to display on canvas with polling progress
             ui_output = {
                 "ui": {
@@ -260,30 +269,39 @@ class WaveSpeedReferenceToVideo:
                 error_msg += f" - {json.dumps(error_detail)}"
             except:
                 error_msg += f" - {e.response.text}"
-            return {
-                "ui": {
-                    "text": [error_msg],
-                },
-                "result": ("", "", error_msg)
-            }
+            PromptServer.instance.sendsync("wavespeed.wavespeedreftovideo.update_status", {
+                "status": error_msg
+            })
+            # return {
+            #     "ui": {
+            #         "text": [error_msg],
+            #     },
+            #     "result": ("", "", error_msg)
+            # }
 
         except requests.exceptions.RequestException as e:
             error_msg = f"Request Error: {str(e)}"
-            return {
-                "ui": {
-                    "text": [error_msg],
-                },
-                "result": ("", "", error_msg)
-            }
+            PromptServer.instance.sendsync("wavespeed.wavespeedreftovideo.update_status", {
+                "status": error_msg
+            })
+            # return {
+            #     "ui": {
+            #         "text": [error_msg],
+            #     },
+            #     "result": ("", "", error_msg)
+            # }
 
         except Exception as e:
             error_msg = f"Unexpected Error: {str(e)}"
-            return {
-                "ui": {
-                    "text": [error_msg],
-                },
-                "result": ("", "", error_msg)
-            }
+            PromptServer.instance.sendsync("wavespeed.wavespeedreftovideo.update_status", {
+                "status": error_msg
+            })
+            # return {
+            #     "ui": {
+            #         "text": [error_msg],
+            #     },
+            #     "result": ("", "", error_msg)
+            # }
 
 
 # A dictionary that contains all all nodes you want to export with their names
