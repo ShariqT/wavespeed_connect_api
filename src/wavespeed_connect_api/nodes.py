@@ -251,8 +251,8 @@ class WaveSpeedSeeddanceRefToVideo:
 
             # Parse the response
             result = response.json()
-            print(f"the result from the response: {result}")
-            print(f"data is {result["data"]}")
+            # print(f"the result from the response: {result}")
+            # print(f"data is {result["data"]}")
             # Extract task_id from response
             task_id = result["data"].get("id", None)
 
