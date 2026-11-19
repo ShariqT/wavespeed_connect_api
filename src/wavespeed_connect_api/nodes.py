@@ -2,6 +2,7 @@ from inspect import cleandoc
 import requests
 import json
 import time
+import math
 from server import PromptServer
 
 
@@ -64,7 +65,7 @@ class WaveSpeedReferenceToVideo:
         }
 
     RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("video_url")
+    RETURN_NAMES = ("video_url",)
     OUTPUT_NODE = True
     DESCRIPTION = cleandoc(__doc__)
     FUNCTION = "generate_video"
@@ -101,28 +102,40 @@ class WaveSpeedReferenceToVideo:
                 result = response.json()
 
                 # Check the status field in the response
-                status = result.get("status", "unknown")
-                status_msg = f"Attempt {attempt + 1}/{max_attempts}: Status = {status}"
+                status = result["data"].get("status", "unknown")
+                status_msg = f"Status: {status} / {math.ceil(((attempt + 1) / 60) * 100) }%"
+                print("polling: sending an update for generation")
+                PromptServer.instance.send_sync("wavespeed.wavespeedreftovideo.update_status", {
+                    "message": status_msg
+                })
                 ui_updates.append(status_msg)
 
                 if status == "completed":
                     # Video generation is complete, extract the video URL
-                    video_url = result.get("output", {}).get("video_url", "")
+                    video_url = result["data"].get("outputs", None)
                     if not video_url:
-                        video_url = result.get("video_url", "")
+                        video_url = video_url[0]
                     final_status = f"Completed after {attempt + 1} polling attempts"
+                    print("polling: video gen success")
+                    PromptServer.instance.send_sync("wavespeed.wavespeedreftovideo.update_status", {
+                        "message": final_status
+                    })
                     ui_updates.append(final_status)
                     return (video_url, final_status, ui_updates)
 
                 elif status == "failed":
                     # Video generation failed
-                    error_message = result.get("error", "Unknown error")
-                    final_status = f"Task failed: {error_message}"
+                    final_status = f"Video Generation failed. This error was due to Wavespeed servers"
+                    print("polling: video gen failed")
+                    PromptServer.instance.send_sync("wavespeed.wavespeedreftovideo.update_status", {
+                        "message": final_status
+                    })
                     ui_updates.append(final_status)
                     return ("", final_status, ui_updates)
 
                 elif status in ("processing", "queued", "pending"):
                     # Task is still in progress, continue polling
+                    print("polling: video gen still in processing")
                     time.sleep(poll_interval)
                     continue
 
@@ -134,7 +147,11 @@ class WaveSpeedReferenceToVideo:
             except requests.exceptions.HTTPError as e:
                 if e.response.status_code == 404:
                     # Task not found or not ready yet, continue polling
-                    status_msg = f"Attempt {attempt + 1}/{max_attempts}: Task not ready yet (404)"
+                    status_msg = f"Task not ready yet (404)"
+                    print("polling: sending http error")
+                    PromptServer.instance.send_sync("wavespeed.wavespeedreftovideo.update_status", {
+                        "message": status_msg
+                    })
                     ui_updates.append(status_msg)
                     time.sleep(poll_interval)
                     continue
@@ -144,21 +161,34 @@ class WaveSpeedReferenceToVideo:
                     error_msg += f" - {json.dumps(error_detail)}"
                 except:
                     error_msg += f" - {e.response.text}"
+                print("polling: sending http error other than 404")
+                PromptServer.instance.send_sync("wavespeed.wavespeedreftovideo.update_status", {
+                    "message": error_msg
+                })
                 ui_updates.append(error_msg)
                 return ("", error_msg, ui_updates)
 
             except requests.exceptions.RequestException as e:
                 error_msg = f"Request Error during polling: {str(e)}"
+                print("polling: requests lib error")
+                PromptServer.instance.send_sync("wavespeed.wavespeedreftovideo.update_status", {
+                    "message": error_msg
+                })
                 ui_updates.append(error_msg)
                 return ("", error_msg, ui_updates)
 
             except Exception as e:
                 error_msg = f"Unexpected Error during polling: {str(e)}"
+                print("polling: unexpected error")
+                PromptServer.instance.send_sync("wavespeed.wavespeedreftovideo.update_status", {
+                    "message": error_msg
+                })
                 ui_updates.append(error_msg)
                 return ("", error_msg, ui_updates)
 
         # Max attempts reached
         timeout_msg = f"Timeout: Task did not complete after {max_attempts} polling attempts"
+        print("polling: max timeout")
         ui_updates.append(timeout_msg)
         return ("", timeout_msg, ui_updates)
 
@@ -221,46 +251,42 @@ class WaveSpeedReferenceToVideo:
 
             # Parse the response
             result = response.json()
-
+            print(f"the result from the response: {result}")
+            print(f"data is {result["data"]}")
             # Extract task_id from response
-            task_id = result.get("task_id", "")
+            task_id = result["data"].get("id", None)
 
             if not task_id:
+                print("Task id was not returned from API")
                 error_text = f"Error: No task_id returned from API. Response: {json.dumps(result)}"
                 PromptServer.instance.send_sync("wavespeed.wavespeedreftovideo.update_status", {
-                    "status": error_text
+                    "message": error_text
                 })
-                # return {
-                #     "ui": {
-                #         "text": [error_text],
-                #     },
-                #     "result": ("", "", error_text)
-                # }
+                return ""
 
             # Poll for the result
             video_url, poll_status, ui_updates = self.poll_for_result(task_id, wavespeed_api_key)
 
             status_message = f"Task ID: {task_id} | {poll_status}"
+            print("sending task id and poll status")
             PromptServer.instance.send_sync("wavespeed.wavespeedreftovideo.update_status", {
-                "status": status_message
+                "message": status_message
             })
             # Combine all UI messages
             all_messages = ui_updates + [status_message]
             if video_url:
                 all_messages.append(f"Video URL: {video_url}")
+                print("got the video url")
                 PromptServer.instance.send_sync("wavespeed.wavespeedreftovideo.update_status", {
-                    "status": "Video rendered!"
+                    "message": "Video rendered!"
                 })
                 return video_url
-            # Prepare UI output to display on canvas with polling progress
-            ui_output = {
-                "ui": {
-                    "text": all_messages,
-                },
-                "result": (video_url, task_id, status_message)
-            }
-
-            return ui_output
+            
+            print("saying that the video gen failed")
+            PromptServer.instance.send_sync("wavespeed.wavespeedreftovideo.update_status", {
+                "message": "Video Generation failed!"
+            })
+            return ""
 
         except requests.exceptions.HTTPError as e:
             error_msg = f"HTTP Error: {e.response.status_code}"
@@ -269,40 +295,29 @@ class WaveSpeedReferenceToVideo:
                 error_msg += f" - {json.dumps(error_detail)}"
             except:
                 error_msg += f" - {e.response.text}"
+            print("sending http error")
             PromptServer.instance.send_sync("wavespeed.wavespeedreftovideo.update_status", {
-                "status": error_msg
+                "message": error_msg
             })
-            # return {
-            #     "ui": {
-            #         "text": [error_msg],
-            #     },
-            #     "result": ("", "", error_msg)
-            # }
+            return ""
 
         except requests.exceptions.RequestException as e:
             error_msg = f"Request Error: {str(e)}"
+            print("sending error from requests library")
             PromptServer.instance.send_sync("wavespeed.wavespeedreftovideo.update_status", {
-                "status": error_msg
+                "message": error_msg
             })
-            # return {
-            #     "ui": {
-            #         "text": [error_msg],
-            #     },
-            #     "result": ("", "", error_msg)
-            # }
+            return ""
+            
 
         except Exception as e:
             error_msg = f"Unexpected Error: {str(e)}"
+            print("sending an exception")
             PromptServer.instance.send_sync("wavespeed.wavespeedreftovideo.update_status", {
-                "status": error_msg
+                "message": error_msg
             })
-            # return {
-            #     "ui": {
-            #         "text": [error_msg],
-            #     },
-            #     "result": ("", "", error_msg)
-            # }
-
+            return ""
+            
 
 # A dictionary that contains all all nodes you want to export with their names
 # NOTE: names should be globally unique

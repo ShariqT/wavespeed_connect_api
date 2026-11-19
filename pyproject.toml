@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wavespeed_connect_api"
-version = "0.0.3"
+version = "0.0.4"
 description = "Connects to Wavespeed API"
 authors = [
   {name = "Shariq Torres", email = "shariq.torres@gmail.com"}
