@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "wavespeed_connect_api"
 version = "0.0.4"
-description = "Connects to Wavespeed API"
+description = "Connects to Wavespeed API to use the Seeddance 2.5 Reference to Video model"
 authors = [
   {name = "Shariq Torres", email = "shariq.torres@gmail.com"}
 ]
@@ -37,7 +37,7 @@ Documentation = "https://github.com/ShariqT/wavespeed_connect_api/wiki"
 
 [tool.comfy]
 PublisherId = "shariqtorres"
-DisplayName = "Wavespeed Connect API"
+DisplayName = "Wavespeed API - Seeddance Reference to Video"
 Icon = ""
 Tags = []
 Repository = "https://github.com/ShariqT/wavespeed_connect_api"

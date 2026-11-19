@@ -6,7 +6,7 @@ import math
 from server import PromptServer
 
 
-class WaveSpeedReferenceToVideo:
+class WaveSpeedSeeddanceRefToVideo:
     """
     A ComfyUI node that connects to the WaveSpeed AI API for reference-to-video generation.
     Uses the Seedance 2.5 Flash model to generate videos from reference images and videos.
@@ -322,10 +322,10 @@ class WaveSpeedReferenceToVideo:
 # A dictionary that contains all all nodes you want to export with their names
 # NOTE: names should be globally unique
 NODE_CLASS_MAPPINGS = {
-    "WaveSpeedReferenceToVideo": WaveSpeedReferenceToVideo
+    "WaveSpeedSeeddanceRefToVideo": WaveSpeedSeeddanceRefToVideo
 }
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "WaveSpeedReferenceToVideo": "WaveSpeed Reference to Video"
+    "WaveSpeedSeeddanceRefToVideo": "WaveSpeed Seeddance Ref to Video"
 }
